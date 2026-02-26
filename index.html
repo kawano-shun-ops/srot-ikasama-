@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>srot machine</title>
+    <title>Wide Text Slot - Precision Rigged v3</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
         .reel-frame {
@@ -188,13 +188,12 @@
     <script>
         const INITIAL_SYMBOLS = ['JACKPOT 🎰', 'LUCKY 7️⃣', 'CHERRY 🍒', 'BIG WIN 💎', 'HELLO 👋', 'REEL SPIN', 'WINNER!', 'GET READY'];
         
-        let riggedIndex = -1; // 予約された実際のシンボルのインデックス
+        // 修正: 文字列で予約を管理する
+        let riggedSymbol = null; 
         let symbols = JSON.parse(localStorage.getItem('slot_symbols')) || [...INITIAL_SYMBOLS];
         let history = [];
         let deletedSymbolsStack = []; 
         let removeAfterWin = JSON.parse(localStorage.getItem('slot_remove_after_win')) || false;
-        
-        // 削除待ちのインデックス
         let pendingRemovalIndex = -1;
 
         const SYMBOL_HEIGHT = 120;
@@ -272,7 +271,7 @@
                 if (reelState.y > singleSetHeight * 60) reelState.y -= singleSetHeight * 30;
             } else {
                 reelState.currentSpeed -= reelState.deceleration * dt;
-                if (reelState.currentSpeed <= 0.5) {
+                if (reelState.currentSpeed <= 0.1) {
                     reelState.y = reelState.targetY;
                     reelStrip.style.transform = `translateY(-${reelState.y}px)`;
                     reelState.active = false;
@@ -310,7 +309,8 @@
                     pendingRemovalIndex = -1;
                 }
             }
-            riggedIndex = -1; 
+            // 修正: 予約をリセット
+            riggedSymbol = null; 
         }
 
         function renderHistory() {
@@ -335,11 +335,17 @@
         spinButton.onclick = () => {
             if (reelState.active) return;
 
+            // 項目削除処理
             if (removeAfterWin && pendingRemovalIndex !== -1) {
                 const deletedItem = symbols.splice(pendingRemovalIndex, 1)[0];
                 deletedSymbolsStack.push(deletedItem);
                 pendingRemovalIndex = -1; 
                 
+                // 削除された後、予約していた文字がまだリストにあるか確認
+                if (riggedSymbol && !symbols.includes(riggedSymbol)) {
+                    riggedSymbol = null; // 削除された項目が予約されていたら解除
+                }
+
                 if (symbols.length === 0) {
                     initReel();
                     updateUI();
@@ -361,17 +367,29 @@
         stopButton.onclick = () => {
             if (!reelState.active || reelState.stopping) return;
             
-            const resultIdx = (riggedIndex !== -1 && riggedIndex < symbols.length) 
-                ? riggedIndex 
-                : Math.floor(Math.random() * symbols.length);
+            // 決定ロジック: 予約された文字列がある場合、その現在のインデックスを検索
+            let resultIdx = -1;
+            if (riggedSymbol !== null) {
+                resultIdx = symbols.indexOf(riggedSymbol);
+            }
+
+            // 予約がない、または予約された項目が削除済みなどの場合はランダム
+            if (resultIdx === -1) {
+                resultIdx = Math.floor(Math.random() * symbols.length);
+            }
 
             const singleSetHeight = symbols.length * SYMBOL_HEIGHT;
-            const requiredDistance = (Math.pow(reelState.baseSpeed, 2)) / (2 * 0.4);
-            const minExtra = singleSetHeight * 1.8; 
-            const estimatedStopY = reelState.y + requiredDistance + minExtra;
-            const targetTotalIndex = Math.ceil((estimatedStopY + CENTER_Y_OFFSET) / SYMBOL_HEIGHT);
-            const targetIndexInSet = Math.ceil(targetTotalIndex / symbols.length) * symbols.length + resultIdx;
-            reelState.targetY = (targetIndexInSet * SYMBOL_HEIGHT) - CENTER_Y_OFFSET;
+            const minDecelDist = (Math.pow(reelState.baseSpeed, 2)) / (2 * 0.4);
+            const bufferDist = singleSetHeight * 2;
+            const estimatedStopY = reelState.y + minDecelDist + bufferDist;
+            
+            let targetY = Math.ceil(estimatedStopY / singleSetHeight) * singleSetHeight + (resultIdx * SYMBOL_HEIGHT) - CENTER_Y_OFFSET;
+            
+            if (targetY - reelState.y < minDecelDist) {
+                targetY += singleSetHeight;
+            }
+
+            reelState.targetY = targetY;
             const exactDistance = reelState.targetY - reelState.y;
             reelState.deceleration = (Math.pow(reelState.currentSpeed, 2)) / (2 * exactDistance);
             reelState.stopping = true;
@@ -395,6 +413,7 @@
                 removeAfterWin = JSON.parse(localStorage.getItem('slot_remove_after_win')) || false;
                 deletedSymbolsStack = [];
                 pendingRemovalIndex = -1;
+                riggedSymbol = null;
                 initReel();
                 updateUI();
                 showToast("保存された設定を読み込みました");
@@ -429,19 +448,19 @@
             });
         }
 
-        // 予約用リストの描画 (削除予定の項目を除外する)
         function renderSecretOptions() {
             secretOptionsContainer.innerHTML = '';
             
             symbols.forEach((s, i) => {
-                // もし削除設定がONで、かつこの項目が削除待ち(pendingRemovalIndex)であれば表示しない
                 if (removeAfterWin && i === pendingRemovalIndex) return;
 
                 const btn = document.createElement('button');
-                btn.className = `p-3 rounded-xl text-left border-2 transition-all ${riggedIndex === i ? 'border-blue-500 bg-blue-50' : 'border-gray-100 hover:border-gray-300'}`;
+                // 修正: 文字列でアクティブ状態を判定
+                const isActive = (riggedSymbol === s);
+                btn.className = `p-3 rounded-xl text-left border-2 transition-all ${isActive ? 'border-blue-500 bg-blue-50 font-bold' : 'border-gray-100 hover:border-gray-300'}`;
                 btn.textContent = s;
                 btn.onclick = () => {
-                    riggedIndex = i;
+                    riggedSymbol = s; // インデックスではなく文字列を保持
                     renderSecretOptions();
                 };
                 secretOptionsContainer.appendChild(btn);
@@ -472,6 +491,7 @@
             localStorage.setItem('slot_remove_after_win', JSON.stringify(removeAfterWin));
             deletedSymbolsStack = []; 
             pendingRemovalIndex = -1;
+            riggedSymbol = null;
             initReel();
             updateUI();
             modal.classList.add('hidden');
@@ -484,7 +504,7 @@
         };
 
         document.getElementById('clear-secret-btn').onclick = () => {
-            riggedIndex = -1;
+            riggedSymbol = null;
             secretModal.classList.add('hidden');
             showToast("予約を解除しました");
         };
@@ -492,7 +512,7 @@
         document.getElementById('close-settings-btn').onclick = () => modal.classList.add('hidden');
         document.getElementById('close-secret-btn').onclick = () => {
             secretModal.classList.add('hidden');
-            if(riggedIndex !== -1) showToast("出目を予約しました");
+            if(riggedSymbol !== null) showToast("出目を予約しました");
         };
         document.getElementById('clear-history').onclick = () => { history = []; renderHistory(); };
 
@@ -507,5 +527,4 @@
         };
     </script>
 </body>
-
 </html>
