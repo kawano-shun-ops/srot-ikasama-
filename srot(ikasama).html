@@ -1,0 +1,510 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Wide Text Slot - Smart Rigged List</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        .reel-frame {
+            width: 90vw;
+            max-width: 600px;
+            height: 360px;
+            overflow: hidden;
+            border: 12px solid #1a1a1a;
+            border-radius: 32px;
+            background: #fff;
+            position: relative;
+            box-shadow: 0 25px 60px rgba(0,0,0,0.6), inset 0 0 40px rgba(0,0,0,0.1);
+        }
+
+        .reel-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            pointer-events: none;
+            background: linear-gradient(
+                to bottom,
+                rgba(0,0,0,0.3) 0%,
+                rgba(0,0,0,0) 25%,
+                rgba(0,0,0,0) 75%,
+                rgba(0,0,0,0.3) 100%
+            );
+            z-index: 10;
+        }
+
+        .center-line {
+            position: absolute;
+            top: 50%;
+            left: -10px;
+            right: -10px;
+            height: 6px;
+            background: rgba(220, 38, 38, 0.8);
+            transform: translateY(-50%);
+            z-index: 20;
+            box-shadow: 0 0 15px rgba(220, 38, 38, 0.5);
+            pointer-events: none;
+        }
+
+        .symbol {
+            height: 120px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 3.5rem;
+            font-weight: 800;
+            user-select: none;
+            color: #1a1a1a;
+            padding: 0 20px;
+            text-align: center;
+            word-break: break-all;
+            line-height: 1.1;
+            box-sizing: border-box;
+        }
+
+        .reel-strip {
+            will-change: transform;
+            transition: none;
+        }
+
+        .history-item {
+            animation: slideIn 0.3s ease-out;
+        }
+
+        @keyframes slideIn {
+            from { opacity: 0; transform: translateX(-10px); }
+            to { opacity: 1; transform: translateX(0); }
+        }
+
+        .secret-trigger {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 50px;
+            height: 50px;
+            z-index: 100;
+            cursor: default;
+            background: transparent;
+        }
+
+        #toast {
+            position: fixed;
+            bottom: 2rem;
+            left: 50%;
+            transform: translateX(-50%);
+            background: #10b981;
+            color: white;
+            padding: 0.75rem 1.5rem;
+            border-radius: 9999px;
+            font-weight: bold;
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
+            opacity: 0;
+            transition: opacity 0.3s ease;
+            pointer-events: none;
+            z-index: 100;
+        }
+    </style>
+</head>
+<body class="bg-gray-950 flex flex-col items-center justify-start min-h-screen font-sans p-4 relative text-white">
+
+    <div id="toast">URLをコピーしました！</div>
+    <div id="secret-trigger" class="secret-trigger"></div>
+
+    <button id="open-settings" class="absolute top-6 right-6 text-gray-400 hover:text-white transition-colors z-30">
+        <svg xmlns="http://www.w3.org/2000/svg" class="h-8 w-8" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+        </svg>
+    </button>
+
+    <div class="flex flex-col items-center gap-8 w-full max-w-4xl mt-8">
+        <div class="flex flex-col items-center gap-8 w-full">
+            <div class="reel-frame">
+                <div class="reel-overlay"></div>
+                <div class="center-line"></div>
+                <div class="reel-strip" id="reel-0"></div>
+            </div>
+
+            <div class="w-64 h-20 relative">
+                <button id="spin-button" class="absolute inset-0 bg-gradient-to-b from-blue-500 to-blue-800 text-white text-2xl font-black rounded-2xl shadow-[0_8px_0_rgb(30,58,138)] active:shadow-none active:translate-y-2 transition-all tracking-widest">
+                    START
+                </button>
+                <button id="stop-button" style="display: none;" class="absolute inset-0 bg-gradient-to-b from-red-500 to-red-800 text-white text-2xl font-black rounded-2xl shadow-[0_8px_0_rgb(153,27,27)] active:shadow-none active:translate-y-2 transition-all tracking-widest">
+                    STOP
+                </button>
+            </div>
+        </div>
+
+        <div class="w-full max-w-[600px] bg-gray-900/50 rounded-3xl p-6 border border-white/5 backdrop-blur-sm">
+            <div class="flex items-center justify-between mb-4 px-2">
+                <h3 class="text-gray-400 font-bold uppercase tracking-widest text-sm flex items-center gap-2">履歴</h3>
+                <div class="flex gap-4 flex-wrap justify-end">
+                    <button id="copy-url-button" class="text-xs text-orange-400 hover:text-orange-300 transition-colors uppercase font-bold">Share</button>
+                    <button id="load-saved-button" class="text-xs text-green-400 hover:text-green-300 transition-colors uppercase font-bold">Load</button>
+                    <button id="undo-button" class="text-xs text-blue-400 hover:text-blue-300 disabled:opacity-30 disabled:pointer-events-none transition-colors uppercase font-bold" disabled>Undo</button>
+                    <button id="clear-history" class="text-xs text-gray-500 hover:text-red-400 transition-colors uppercase font-bold">Clear</button>
+                </div>
+            </div>
+            <div id="history-list" class="space-y-2 max-h-48 overflow-y-auto px-1">
+                <p id="no-history" class="text-center text-gray-600 py-4 italic text-sm">履歴はありません</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- 設定モーダル -->
+    <div id="settings-modal" class="hidden fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80">
+        <div class="bg-gray-800 w-full max-w-2xl rounded-3xl p-8 shadow-2xl border border-gray-700 flex flex-col max-h-[90vh] text-white">
+            <h2 class="text-2xl font-bold mb-4">項目の編集</h2>
+            <div class="mb-6 p-4 bg-gray-900/50 rounded-2xl">
+                <label class="flex items-center gap-3 cursor-pointer">
+                    <input type="checkbox" id="remove-after-win" class="w-5 h-5 rounded bg-gray-800 text-blue-500">
+                    <span class="text-gray-300">一度当選した項目をリストから削除する</span>
+                </label>
+            </div>
+            <div id="symbol-list-container" class="space-y-3 overflow-y-auto pr-2 mb-6 text-black"></div>
+            <button id="add-symbol-btn" class="mb-6 w-full py-3 border-2 border-dashed border-gray-600 rounded-xl text-gray-400 hover:text-white hover:border-gray-400 transition-colors">新しい項目を追加</button>
+            <div class="flex flex-wrap gap-4 mt-auto">
+                <button id="save-symbols-btn" class="flex-1 bg-blue-600 hover:bg-blue-500 text-white font-bold py-4 rounded-xl transition-colors">保存して設定を確定</button>
+                <button id="close-settings-btn" class="flex-1 bg-gray-700 text-white font-bold py-4 rounded-xl transition-colors">キャンセル</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 隠し設定モーダル (予約画面) -->
+    <div id="secret-modal" class="hidden fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+        <div class="bg-white text-gray-900 w-full max-w-md rounded-2xl p-6 shadow-2xl">
+            <h3 class="text-lg font-bold mb-4 border-b pb-2">次に出る項目を予約</h3>
+            <p class="text-xs text-gray-500 mb-4 italic">※削除設定がONの場合、直前に出た項目は次回リールから消えるためここには表示されません。</p>
+            <div id="secret-options" class="grid grid-cols-1 gap-2 max-h-60 overflow-y-auto mb-6"></div>
+            <div class="flex gap-3">
+                <button id="clear-secret-btn" class="flex-1 py-2 bg-gray-200 rounded-lg hover:bg-gray-300 transition-colors">解除 (ランダム)</button>
+                <button id="close-secret-btn" class="flex-1 py-2 bg-gray-800 text-white rounded-lg">閉じる</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const INITIAL_SYMBOLS = ['JACKPOT 🎰', 'LUCKY 7️⃣', 'CHERRY 🍒', 'BIG WIN 💎', 'HELLO 👋', 'REEL SPIN', 'WINNER!', 'GET READY'];
+        
+        let riggedIndex = -1; // 予約された実際のシンボルのインデックス
+        let symbols = JSON.parse(localStorage.getItem('slot_symbols')) || [...INITIAL_SYMBOLS];
+        let history = [];
+        let deletedSymbolsStack = []; 
+        let removeAfterWin = JSON.parse(localStorage.getItem('slot_remove_after_win')) || false;
+        
+        // 削除待ちのインデックス
+        let pendingRemovalIndex = -1;
+
+        const SYMBOL_HEIGHT = 120;
+        const CENTER_Y_OFFSET = 120; 
+
+        const reelState = { 
+            active: false,
+            stopping: false, 
+            y: 0, 
+            currentSpeed: 0,
+            baseSpeed: 32,
+            deceleration: 0.4,
+            targetY: 0,
+            lastTimestamp: 0
+        };
+        
+        const reelStrip = document.getElementById('reel-0');
+        const spinButton = document.getElementById('spin-button');
+        const stopButton = document.getElementById('stop-button');
+        const undoButton = document.getElementById('undo-button');
+        const loadSavedButton = document.getElementById('load-saved-button');
+        const copyUrlButton = document.getElementById('copy-url-button');
+        const modal = document.getElementById('settings-modal');
+        const secretModal = document.getElementById('secret-modal');
+        const openSettingsBtn = document.getElementById('open-settings');
+        const secretTrigger = document.getElementById('secret-trigger');
+        const symbolListContainer = document.getElementById('symbol-list-container');
+        const secretOptionsContainer = document.getElementById('secret-options');
+        const historyList = document.getElementById('history-list');
+        const toast = document.getElementById('toast');
+
+        function initReel() {
+            if (symbols.length === 0) {
+                reelStrip.innerHTML = '<div class="symbol text-gray-400 italic">項目がありません</div>';
+                return;
+            }
+            const copies = 100; 
+            const totalSymbols = [];
+            for(let i=0; i<copies; i++) totalSymbols.push(...symbols);
+            
+            reelStrip.innerHTML = totalSymbols.map(s => {
+                let fs = s.length > 8 ? (s.length > 15 ? "1.6rem" : "2.2rem") : "3.5rem";
+                return `<div class="symbol" style="font-size: ${fs}">${s}</div>`;
+            }).join('');
+            
+            const midIndex = Math.floor(copies / 2) * symbols.length;
+            reelState.y = (midIndex * SYMBOL_HEIGHT) - CENTER_Y_OFFSET;
+            reelStrip.style.transform = `translateY(-${reelState.y}px)`;
+        }
+
+        function updateUI() {
+            if (reelState.active) {
+                spinButton.style.display = 'none';
+                stopButton.style.display = 'block';
+                stopButton.disabled = reelState.stopping;
+                stopButton.style.opacity = reelState.stopping ? "0.5" : "1";
+            } else {
+                spinButton.style.display = 'block';
+                stopButton.style.display = 'none';
+                const effectiveCount = symbols.length - (pendingRemovalIndex !== -1 ? 1 : 0);
+                spinButton.disabled = effectiveCount < 0; 
+            }
+            undoButton.disabled = deletedSymbolsStack.length === 0 || reelState.active;
+        }
+
+        function gameLoop(timestamp) {
+            if (!reelState.active) return;
+            if (!reelState.lastTimestamp) reelState.lastTimestamp = timestamp;
+            const dt = (timestamp - reelState.lastTimestamp) / 16.66;
+            reelState.lastTimestamp = timestamp;
+
+            if (!reelState.stopping) {
+                reelState.y += reelState.currentSpeed * dt;
+                const singleSetHeight = symbols.length * SYMBOL_HEIGHT;
+                if (reelState.y > singleSetHeight * 60) reelState.y -= singleSetHeight * 30;
+            } else {
+                reelState.currentSpeed -= reelState.deceleration * dt;
+                if (reelState.currentSpeed <= 0.5) {
+                    reelState.y = reelState.targetY;
+                    reelStrip.style.transform = `translateY(-${reelState.y}px)`;
+                    reelState.active = false;
+                    reelState.stopping = false;
+                    reelState.lastTimestamp = 0;
+                    finishSpin();
+                    updateUI(); 
+                    return; 
+                }
+                reelState.y += reelState.currentSpeed * dt;
+                if (reelState.y >= reelState.targetY) {
+                    reelState.y = reelState.targetY;
+                    reelState.currentSpeed = 0;
+                }
+            }
+            reelStrip.style.transform = `translateY(-${reelState.y}px)`;
+            requestAnimationFrame(gameLoop);
+        }
+
+        function finishSpin() {
+            const currentY = reelState.y + CENTER_Y_OFFSET;
+            const index = Math.round(currentY / SYMBOL_HEIGHT) % symbols.length;
+            const winner = symbols[index];
+            
+            if (winner) {
+                const now = new Date();
+                const time = now.toLocaleTimeString();
+                history.unshift({ text: winner, time });
+                if (history.length > 20) history.pop();
+                renderHistory();
+
+                if (removeAfterWin) {
+                    pendingRemovalIndex = index;
+                } else {
+                    pendingRemovalIndex = -1;
+                }
+            }
+            riggedIndex = -1; 
+        }
+
+        function renderHistory() {
+            if (history.length === 0) {
+                historyList.innerHTML = '<p class="text-center text-gray-600 py-4 italic text-sm">履歴はありません</p>';
+                return;
+            }
+            historyList.innerHTML = history.map(h => `
+                <div class="history-item flex justify-between bg-white/5 p-3 rounded-xl border border-white/5 mb-2">
+                    <span class="font-bold">${h.text}</span>
+                    <span class="text-gray-500 text-xs">${h.time}</span>
+                </div>
+            `).join('');
+        }
+
+        function showToast(msg) {
+            toast.textContent = msg;
+            toast.style.opacity = '1';
+            setTimeout(() => { toast.style.opacity = '0'; }, 2000);
+        }
+
+        spinButton.onclick = () => {
+            if (reelState.active) return;
+
+            if (removeAfterWin && pendingRemovalIndex !== -1) {
+                const deletedItem = symbols.splice(pendingRemovalIndex, 1)[0];
+                deletedSymbolsStack.push(deletedItem);
+                pendingRemovalIndex = -1; 
+                
+                if (symbols.length === 0) {
+                    initReel();
+                    updateUI();
+                    return;
+                }
+                initReel();
+            }
+
+            if (symbols.length === 0) return;
+
+            reelState.active = true;
+            reelState.stopping = false;
+            reelState.currentSpeed = reelState.baseSpeed;
+            reelState.lastTimestamp = 0;
+            updateUI();
+            requestAnimationFrame(gameLoop);
+        };
+
+        stopButton.onclick = () => {
+            if (!reelState.active || reelState.stopping) return;
+            
+            const resultIdx = (riggedIndex !== -1 && riggedIndex < symbols.length) 
+                ? riggedIndex 
+                : Math.floor(Math.random() * symbols.length);
+
+            const singleSetHeight = symbols.length * SYMBOL_HEIGHT;
+            const requiredDistance = (Math.pow(reelState.baseSpeed, 2)) / (2 * 0.4);
+            const minExtra = singleSetHeight * 1.8; 
+            const estimatedStopY = reelState.y + requiredDistance + minExtra;
+            const targetTotalIndex = Math.ceil((estimatedStopY + CENTER_Y_OFFSET) / SYMBOL_HEIGHT);
+            const targetIndexInSet = Math.ceil(targetTotalIndex / symbols.length) * symbols.length + resultIdx;
+            reelState.targetY = (targetIndexInSet * SYMBOL_HEIGHT) - CENTER_Y_OFFSET;
+            const exactDistance = reelState.targetY - reelState.y;
+            reelState.deceleration = (Math.pow(reelState.currentSpeed, 2)) / (2 * exactDistance);
+            reelState.stopping = true;
+            updateUI();
+        };
+
+        undoButton.onclick = () => {
+            if (deletedSymbolsStack.length === 0 || reelState.active) return;
+            const restoredItem = deletedSymbolsStack.pop();
+            symbols.push(restoredItem); 
+            pendingRemovalIndex = -1; 
+            initReel();
+            updateUI();
+        };
+
+        loadSavedButton.onclick = () => {
+            if (reelState.active) return;
+            const saved = localStorage.getItem('slot_symbols');
+            if (saved) {
+                symbols = JSON.parse(saved);
+                removeAfterWin = JSON.parse(localStorage.getItem('slot_remove_after_win')) || false;
+                deletedSymbolsStack = [];
+                pendingRemovalIndex = -1;
+                initReel();
+                updateUI();
+                showToast("保存された設定を読み込みました");
+            }
+        };
+
+        copyUrlButton.onclick = () => {
+            const params = new URLSearchParams();
+            params.set('s', symbols.map(s => encodeURIComponent(s)).join(','));
+            params.set('r', removeAfterWin ? '1' : '0');
+            const shareUrl = `${window.location.href.split('?')[0]}?${params.toString()}`;
+            
+            const dummy = document.createElement('textarea');
+            document.body.appendChild(dummy);
+            dummy.value = shareUrl;
+            dummy.select();
+            document.execCommand('copy');
+            document.body.removeChild(dummy);
+            showToast("URLをコピーしました！");
+        };
+
+        function renderInputs() {
+            symbolListContainer.innerHTML = '';
+            symbols.forEach((s, i) => {
+                const div = document.createElement('div');
+                div.className = "flex gap-2 mb-2";
+                div.innerHTML = `
+                    <input type="text" value="${s}" class="flex-1 p-3 rounded-xl border border-gray-600 bg-white" oninput="symbols[${i}]=this.value">
+                    <button class="text-red-500 font-bold px-2 hover:bg-red-50 rounded-lg transition-colors" onclick="symbols.splice(${i},1);renderInputs()">✕</button>
+                `;
+                symbolListContainer.appendChild(div);
+            });
+        }
+
+        // 予約用リストの描画 (削除予定の項目を除外する)
+        function renderSecretOptions() {
+            secretOptionsContainer.innerHTML = '';
+            
+            symbols.forEach((s, i) => {
+                // もし削除設定がONで、かつこの項目が削除待ち(pendingRemovalIndex)であれば表示しない
+                if (removeAfterWin && i === pendingRemovalIndex) return;
+
+                const btn = document.createElement('button');
+                btn.className = `p-3 rounded-xl text-left border-2 transition-all ${riggedIndex === i ? 'border-blue-500 bg-blue-50' : 'border-gray-100 hover:border-gray-300'}`;
+                btn.textContent = s;
+                btn.onclick = () => {
+                    riggedIndex = i;
+                    renderSecretOptions();
+                };
+                secretOptionsContainer.appendChild(btn);
+            });
+
+            if (secretOptionsContainer.innerHTML === '') {
+                secretOptionsContainer.innerHTML = '<p class="text-center text-gray-400 py-4 italic text-sm">選択可能な項目がありません</p>';
+            }
+        }
+
+        openSettingsBtn.onclick = () => {
+            if (reelState.active) return;
+            document.getElementById('remove-after-win').checked = removeAfterWin;
+            renderInputs();
+            modal.classList.remove('hidden');
+        };
+
+        secretTrigger.onclick = () => {
+            if (reelState.active) return;
+            renderSecretOptions();
+            secretModal.classList.remove('hidden');
+        };
+
+        document.getElementById('save-symbols-btn').onclick = () => {
+            symbols = symbols.map(s => s.trim()).filter(s => s !== "");
+            removeAfterWin = document.getElementById('remove-after-win').checked;
+            localStorage.setItem('slot_symbols', JSON.stringify(symbols));
+            localStorage.setItem('slot_remove_after_win', JSON.stringify(removeAfterWin));
+            deletedSymbolsStack = []; 
+            pendingRemovalIndex = -1;
+            initReel();
+            updateUI();
+            modal.classList.add('hidden');
+        };
+
+        document.getElementById('add-symbol-btn').onclick = () => {
+            symbols.push("");
+            renderInputs();
+            symbolListContainer.scrollTop = symbolListContainer.scrollHeight;
+        };
+
+        document.getElementById('clear-secret-btn').onclick = () => {
+            riggedIndex = -1;
+            secretModal.classList.add('hidden');
+            showToast("予約を解除しました");
+        };
+
+        document.getElementById('close-settings-btn').onclick = () => modal.classList.add('hidden');
+        document.getElementById('close-secret-btn').onclick = () => {
+            secretModal.classList.add('hidden');
+            if(riggedIndex !== -1) showToast("出目を予約しました");
+        };
+        document.getElementById('clear-history').onclick = () => { history = []; renderHistory(); };
+
+        window.onload = () => {
+            const params = new URLSearchParams(window.location.search);
+            if (params.get('s')) {
+                symbols = params.get('s').split(',').map(decodeURIComponent);
+                if (params.get('r')) removeAfterWin = params.get('r') === '1';
+            }
+            initReel();
+            updateUI();
+        };
+    </script>
+</body>
+</html>
